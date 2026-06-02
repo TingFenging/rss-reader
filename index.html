@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RSS 阅读器</title>
+  <style>
+    /* ===== reset ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+    }
+
+    /* ===== 布局 ===== */
+    .app {
+      display: flex;
+      height: 100vh;
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fff;
+      box-shadow: 0 0 20px rgba(0,0,0,.08);
+    }
+
+    /* ===== 左侧栏 ===== */
+    .sidebar {
+      width: 280px;
+      border-right: 1px solid #e8e8e8;
+      display: flex;
+      flex-direction: column;
+      background: #fafafa;
+    }
+    .sidebar-header {
+      padding: 20px 16px 12px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .sidebar-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+    .sidebar-header p {
+      font-size: 12px;
+      color: #999;
+      margin-top: 2px;
+    }
+    .feed-form {
+      display: flex;
+      gap: 6px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .feed-form input {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      transition: border .2s;
+    }
+    .feed-form input:focus { border-color: #4f6ef7; }
+    .feed-form button {
+      padding: 8px 14px;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .feed-form button:hover { background: #3b5de7; }
+
+    /* ===== AI 设置面板 ===== */
+    .settings-toggle {
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #999;
+      cursor: pointer;
+      border-top: 1px solid #e8e8e8;
+      user-select: none;
+    }
+    .settings-toggle:hover { color: #333; }
+    .settings-panel {
+      display: none;
+      padding: 12px 16px;
+      border-top: 1px solid #e8e8e8;
+      background: #f5f5f5;
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel label {
+      display: block; font-size: 12px;
+      color: #666; margin: 8px 0 4px;
+    }
+    .settings-panel input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    .settings-panel input:focus { border-color: #4f6ef7; }
+    .settings-panel button {
+      margin-top: 10px;
+      padding: 6px 14px;
+      background: #4f6ef7;
+      color: #fff;
+      border: none; border-radius: 4px;
+      font-size: 13px; cursor: pointer;
+    }
+    .settings-panel button:hover { background: #3b5de7; }
+
+    .feed-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .feed-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background .15s;
+      border-left: 3px solid transparent;
+    }
+    .feed-item:hover { background: #f0f0f0; }
+    .feed-item.active {
+      background: #e8f0fe;
+      border-left-color: #4f6ef7;
+    }
+    .feed-item .name {
+      font-size: 14px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .feed-item .count {
+      font-size: 11px;
+      color: #999;
+      background: #eee;
+      padding: 1px 7px;
+      border-radius: 10px;
+      margin-left: 8px;
+    }
+    .feed-item .remove {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0 4px;
+      line-height: 1;
+      display: none;
+    }
+    .feed-item:hover .remove { display: block; }
+    .feed-item .remove:hover { color: #e74c3c; }
+
+    /* ===== 主区域 ===== */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .main-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e8e8e8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .main-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .main-header .actions {
+      display: flex;
+      gap: 8px;
+    }
+    .main-header .actions button {
+      padding: 6px 14px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .main-header .actions button:hover {
+      border-color: #4f6ef7;
+      color: #4f6ef7;
+    }
+    .article-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .article-item {
+      padding: 14px 24px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background .15s;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .article-item .cb {
+      margin-top: 2px;
+      flex-shrink: 0;
+      width: 16px; height: 16px;
+      cursor: pointer;
+      accent-color: #4f6ef7;
+    }
+    .article-item .body { flex: 1; min-width: 0; }
+    .article-item:hover { background: #fafafa; }
+    .article-item.selected { background: #eef2ff; }
+    .article-item h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1a1a2e;
+    }
+    .article-item .meta {
+      font-size: 12px;
+      color: #999;
+      display: flex;
+      gap: 12px;
+    }
+    .article-item .summary {
+      font-size: 13px;
+      color: #666;
+      margin-top: 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .article-item .ai-tags {
+      margin-top: 6px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .article-item .ai-tags .tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e8f0fe;
+      color: #4f6ef7;
+    }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #bbb;
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ===== loading ===== */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 左侧栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>RSS 阅读器</h1>
+      <p>AI 摘要 · 智能分类</p>
+    </div>
+    <div class="feed-form">
+      <input type="text" id="feedUrlInput" placeholder="粘贴 RSS 链接..." />
+      <button id="addFeedBtn">添加</button>
+      <button id="clearBtn" style="padding:8px 10px">清除</button>
+    </div>
+    <div class="feed-list" id="feedList"></div>
+
+    <!-- AI 配置 -->
+    <div class="settings-toggle" id="settingsToggle">⚙️ API 设置</div>
+    <div class="settings-panel" id="settingsPanel">
+      <label>API 地址</label>
+      <input type="text" id="apiEndpoint" placeholder="https://api.deepseek.com" />
+      <label>API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-..." />
+      <label>模型</label>
+      <input type="text" id="apiModel" placeholder="deepseek-chat" />
+      <button id="saveApiBtn">保存</button>
+      <span id="apiStatus" style="font-size:12px;color:#999"></span>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <section class="main">
+    <div class="main-header">
+      <h2 id="currentFeedTitle">所有文章</h2>
+      <div class="actions">
+        <button id="refreshBtn">刷新</button>
+        <button id="aiSummaryBtn">AI 摘要</button>
+        <button id="selectAllBtn">全选</button>
+      </div>
+    </div>
+    <div class="article-list" id="articleList">
+      <div class="empty-state">
+        <div class="icon">📰</div>
+        <p>添加一个 RSS 源开始阅读</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="db.js"></script>
+<script>
+  // ============================================================
+  //  第一阶段骨架代码 — 抓取 + 渲染
+  // ============================================================
+
+  // ---------- CORS 代理 ----------
+  // 本地用 Node.js server.js（推荐），或外置代理
+  // 本地服务器地址
+  // 本地代理 — 与页面同源，所以可以用相对路径
+  const LOCAL_PROXY = '/api/fetch?url=';
+
+  // 备选：切换回外置代理时用
+  const PROXIES = {
+    allorigins: url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    corsproxy:  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  };
+  // 选一个：'local' | 'allorigins' | 'corsproxy' | null（直连，不推荐）
+  let activeProxy = 'local';
+
+  // ---------- 状态 ----------
+  const state = {
+    feeds: [],
+    articles: [],
+    activeFeedId: null,
+    selectedIds: new Set(),
+  };
+
+  // ---------- DOM refs ----------
+  const $ = id => document.getElementById(id);
+  const feedUrlInput  = $('feedUrlInput');
+  const addFeedBtn    = $('addFeedBtn');
+  const feedList      = $('feedList');
+  const currentTitle  = $('currentFeedTitle');
+  const articleList   = $('articleList');
+  const refreshBtn    = $('refreshBtn');
+  const aiSummaryBtn  = $('aiSummaryBtn');
+
+  // ---------- 工具函数 ----------
+  function uuid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  // ---------- 核心：解析 XML（RSS 2.0 + Atom）---------
+  function parseFeed(xmlText, feedUrl) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlText, 'text/xml');
+
+    const parseError = doc.querySelector('parsererror');
+    if (parseError) throw new Error('XML 解析失败');
+
+    const root = doc.documentElement;
+
+    // ---- 检测格式 ----
+    if (root.tagName === 'rss') {
+      return parseRSS(doc, feedUrl);
+    }
+    if (root.tagName === 'feed') {
+      return parseAtom(doc, feedUrl);
+    }
+
+    throw new Error('不支持的 XML 格式（只支持 RSS 2.0 和 Atom）');
+  }
+
+  // RSS 2.0: <rss><channel><item>
+  function parseRSS(doc, feedUrl) {
+    const channel = doc.querySelector('channel');
+    if (!channel) throw new Error('找不到 channel 节点');
+
+    const feedTitle = channel.querySelector('title')?.textContent?.trim() || feedUrl;
+
+    const items = [...channel.querySelectorAll('item')].map(item => ({
+      title:       item.querySelector('title')?.textContent?.trim() || '(无标题)',
+      link:        item.querySelector('link')?.textContent?.trim() || '#',
+      pubDate:     item.querySelector('pubDate')?.textContent?.trim() || '',
+      description: item.querySelector('description')?.textContent?.trim() || '',
+    }));
+
+    return { feedTitle, items };
+  }
+
+  // Atom: <feed><entry>
+  function parseAtom(doc, feedUrl) {
+    const feedTitle = doc.querySelector('feed > title')?.textContent?.trim() || feedUrl;
+
+    const items = [...doc.querySelectorAll('entry')].map(entry => {
+      // Atom 的 link 是 <link href="..." rel="alternate"/>
+      const linkEl = entry.querySelector('link[rel="alternate"], link:not([rel])');
+      const link = linkEl?.getAttribute('href')?.trim() || '#';
+
+      // Atom 日期用 <published> 或 <updated>
+      const date = entry.querySelector('published')?.textContent
+                || entry.querySelector('updated')?.textContent
+                || '';
+
+      // Atom 摘要：<summary> 或 <content>
+      const summary = (entry.querySelector('summary')?.textContent
+                    || entry.querySelector('content')?.textContent
+                    || '').replace(/<[^>]+>/g, '').trim();
+
+      return {
+        title:       entry.querySelector('title')?.textContent?.trim() || '(无标题)',
+        link,
+        pubDate:     date,
+        description: summary,
+      };
+    });
+
+    return { feedTitle, items };
+  }
+
+  // ---------- 获取并解析 RSS（CORS 代理优先）--------
+  async function fetchAndParseRSS(url) {
+    const tryFetch = async (targetUrl) => {
+      const res = await fetch(targetUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.text();
+    };
+
+    let xmlText;
+    if (activeProxy === 'local') {
+      const proxyUrl = LOCAL_PROXY + encodeURIComponent(url);
+      console.log('抓取:', proxyUrl);
+      xmlText = await tryFetch(proxyUrl);
+    } else if (activeProxy) {
+      const proxyUrl = PROXIES[activeProxy](url);
+      try {
+        xmlText = await tryFetch(proxyUrl);
+      } catch (e) {
+        console.warn('代理失败，尝试直连:', e.message);
+        xmlText = await tryFetch(url);
+      }
+    } else {
+      xmlText = await tryFetch(url);
+    }
+
+    return parseFeed(xmlText, url);
+  }
+
+  // ---------- 添加源 ----------
+  async function addFeed(url) {
+    // 去重
+    if (state.feeds.some(f => f.url === url)) {
+      alert('这个源已经添加过了');
+      return;
+    }
+
+    try {
+      const { feedTitle, items } = await fetchAndParseRSS(url);
+
+      const feedId = uuid();
+      const feed = { id: feedId, url, title: feedTitle, articleCount: items.length };
+      state.feeds.push(feed);
+
+      const newArticles = items.map(item => ({
+        id:       uuid(),
+        feedId,
+        title:    item.title,
+        link:     item.link,
+        pubDate:  new Date(item.pubDate).toLocaleDateString('zh-CN'),
+        summary:  item.description.replace(/<[^>]+>/g, '').slice(0, 200),
+        aiTags:   [],
+      }));
+      state.articles.push(...newArticles);
+
+      console.log('添加源完成:', { feedTitle, articleCount: newArticles.length });
+      console.log('state 状态:', { feeds: state.feeds.length, articles: state.articles.length, activeFeedId: state.activeFeedId });
+
+      await persistState();
+      renderFeedList();
+      selectFeed(feedId);
+      feedUrlInput.value = '';
+    } catch (err) {
+      alert('抓取失败: ' + err.message);
+    }
+  }
+
+  // ---------- 选中源 ----------
+  function selectFeed(feedId) {
+    state.activeFeedId = feedId;
+    state.selectedIds.clear();
+    const feed = state.feeds.find(f => f.id === feedId);
+    currentTitle.textContent = feed ? feed.title : '所有文章';
+    renderFeedList();
+    renderArticles();
+  }
+
+  // ---------- 删除源 ----------
+  async function removeFeed(feedId) {
+    state.feeds = state.feeds.filter(f => f.id !== feedId);
+    state.articles = state.articles.filter(a => a.feedId !== feedId);
+    if (state.activeFeedId === feedId) {
+      state.activeFeedId = state.feeds.length > 0 ? state.feeds[0].id : null;
+    }
+    // 同步删除 IndexedDB 中对应的数据
+    const toRemove = state.articles.filter(a => a.feedId === feedId);
+    await Promise.all(toRemove.map(a => DB.articles.del(a.id)));
+    await DB.feeds.del(feedId);
+
+    renderFeedList();
+    renderArticles();
+    currentTitle.textContent = state.activeFeedId
+      ? state.feeds.find(f => f.id === state.activeFeedId)?.title || '所有文章'
+      : '所有文章';
+  }
+
+  // ---------- 渲染：源列表 ----------
+  function renderFeedList() {
+    feedList.innerHTML = state.feeds.map(f => `
+      <div class="feed-item${state.activeFeedId === f.id ? ' active' : ''}" data-id="${f.id}">
+        <span class="name">${f.title}</span>
+        <span class="count">${f.articleCount}</span>
+        <button class="remove" data-id="${f.id}">&times;</button>
+      </div>
+    `).join('');
+
+    feedList.querySelectorAll('.feed-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove')) return;
+        selectFeed(el.dataset.id);
+      });
+    });
+    feedList.querySelectorAll('.remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeFeed(btn.dataset.id);
+      });
+    });
+  }
+
+  // ---------- 渲染：文章列表 ----------
+  function renderArticles() {
+    const filtered = state.activeFeedId
+      ? state.articles.filter(a => a.feedId === state.activeFeedId)
+      : state.articles;
+
+    if (filtered.length === 0) {
+      articleList.innerHTML = `<div class="empty-state"><div class="icon">📰</div><p>暂无文章</p></div>`;
+      return;
+    }
+
+    articleList.innerHTML = filtered.map(a => {
+      const sel = state.selectedIds.has(a.id) ? ' selected' : '';
+      const checked = state.selectedIds.has(a.id) ? 'checked' : '';
+      return `
+      <div class="article-item${sel}" data-id="${a.id}" data-link="${a.link}">
+        <input type="checkbox" class="cb" ${checked} data-id="${a.id}" />
+        <div class="body">
+          <h3>${a.title}</h3>
+          <div class="meta">
+            <span>${a.pubDate}</span>
+            ${a.aiTags.length > 0 ? `<span>${a.aiTags.join(' · ')}</span>` : ''}
+          </div>
+          <div class="summary">${a.summary}</div>
+          ${a.aiTags.length > 0 ? `
+            <div class="ai-tags">
+              ${a.aiTags.map(t => `<span class="tag">${t}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;}).join('');
+
+    // checkbox 切换选中
+    articleList.querySelectorAll('.cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.selectedIds.add(cb.dataset.id);
+        else state.selectedIds.delete(cb.dataset.id);
+        // 更新行高亮
+        const row = cb.closest('.article-item');
+        if (row) row.classList.toggle('selected', cb.checked);
+      });
+    });
+
+    // 点击标题区域跳转链接（避开 checkbox）
+    articleList.querySelectorAll('.article-item .body').forEach(el => {
+      el.addEventListener('click', (e) => {
+        const link = el.closest('.article-item')?.dataset.link;
+        if (link && link !== '#') window.open(link, '_blank');
+      });
+    });
+  }
+
+  // ---------- 刷新当前源 ----------
+  async function refreshActiveFeed() {
+    if (!state.activeFeedId) return;
+    const feed = state.feeds.find(f => f.id === state.activeFeedId);
+    if (!feed) return;
+
+    articleList.innerHTML = '<div class="loading">正在刷新...</div>';
+
+    try {
+      const { items } = await fetchAndParseRSS(feed.url);
+      // 简单去重：按标题去重（真实项目用 guid 更好）
+      const existingTitles = new Set(
+        state.articles.filter(a => a.feedId === feed.id).map(a => a.title)
+      );
+      const newItems = items.filter(item => !existingTitles.has(item.title));
+
+      const newArticles = newItems.map(item => ({
+        id:       uuid(),
+        feedId:   feed.id,
+        title:    item.title,
+        link:     item.link,
+        pubDate:  new Date(item.pubDate).toLocaleDateString('zh-CN'),
+        summary:  item.description.replace(/<[^>]+>/g, '').slice(0, 200),
+        aiTags:   [],
+      }));
+
+      state.articles.push(...newArticles);
+      await DB.articles.putAll(newArticles);
+      feed.articleCount = state.articles.filter(a => a.feedId === feed.id).length;
+      await DB.feeds.put(feed);
+      renderFeedList();
+      renderArticles();
+    } catch (err) {
+      alert('刷新失败: ' + err.message);
+    }
+  }
+
+  // ---------- AI API 调用 ----------
+  // 配置存在 localStorage
+  function getAPIConfig() {
+    try {
+      return JSON.parse(localStorage.getItem('rss_ai_config')) || {};
+    } catch { return {}; }
+  }
+  function saveAPIConfig(endpoint, key, model) {
+    localStorage.setItem('rss_ai_config', JSON.stringify({ endpoint, key, model }));
+  }
+
+  // 加载 AI 配置到设置面板
+  function loadAPIConfigToUI() {
+    const cfg = getAPIConfig();
+    if (cfg.endpoint) document.getElementById('apiEndpoint').value = cfg.endpoint;
+    if (cfg.key)      document.getElementById('apiKey').value      = cfg.key;
+    if (cfg.model)    document.getElementById('apiModel').value    = cfg.model;
+  }
+
+  // 真实 AI 摘要
+  async function runAISummary() {
+    const filtered = state.activeFeedId
+      ? state.articles.filter(a => a.feedId === state.activeFeedId)
+      : state.articles;
+
+    // 从勾选的文章中挑出没有 AI 标签的
+    const checked = filtered.filter(a => state.selectedIds.has(a.id));
+    const target = checked.length > 0
+      ? checked.filter(a => a.aiTags.length === 0)
+      : filtered.filter(a => a.aiTags.length === 0);
+
+    if (checked.length === 0 && target.length === filtered.length) {
+      // 没勾选 → 默认处理所有未打标文章
+    } else if (target.length === 0) {
+      alert('勾选的文章都已添加 AI 标签');
+      return;
+    }
+
+    const cfg = getAPIConfig();
+    if (!cfg.endpoint || !cfg.key) {
+      alert('请先在左下角 API 设置中填入地址和 Key');
+      document.getElementById('settingsPanel').classList.add('open');
+      return;
+    }
+
+    // 构造请求
+    const articlesText = target.map((a, i) =>
+      `[${i + 1}] 标题: ${a.title}\n摘要: ${a.summary}`
+    ).join('\n\n');
+
+    const systemPrompt = '你是一个RSS文章分类助手。\n' +
+      '对每篇文章返回JSON，格式严格如下（不要加markdown代码块包装）：\n' +
+      '{ "articles": [{ "index": 0, "tags": ["标签1"], "summary": "一句话中文摘要" }, ...] }\n' +
+      '标签用中文，1-2个，从这些选：科技/AI/前端/开源/教程/资讯/设计/工具/思考/产品/生活';
+
+    articleList.innerHTML = '<div class="loading">AI 分析中...</div>';
+
+    try {
+      const resp = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: cfg.endpoint,
+          key: cfg.key,
+          model: cfg.model || 'deepseek-chat',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: articlesText },
+          ],
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error('HTTP ' + resp.status + (data.error ? ': ' + data.error : ''));
+      }
+
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error('API 返回内容为空');
+
+      // 清理可能出现的 markdown 代码块
+      let clean = content.trim();
+      if (clean.startsWith('```')) clean = clean.replace(/```(?:json)?\n?/g, '').trim();
+      if (clean.endsWith('```')) clean = clean.slice(0, -3).trim();
+
+      const parsed = JSON.parse(clean);
+      if (!parsed.articles || !Array.isArray(parsed.articles)) {
+        throw new Error('返回格式不符，缺少 articles 数组');
+      }
+
+      // 写入结果
+      for (const item of parsed.articles) {
+        const idx = item.index;
+        if (idx >= 0 && idx < target.length) {
+          target[idx].aiTags = item.tags || [];
+          if (item.summary) {
+            target[idx].summary = item.summary;
+          }
+        }
+      }
+
+      // 持久化
+      await Promise.all(target.map(a => DB.articles.put(a)));
+      renderArticles();
+      alert('AI 分析完成: ' + target.length + ' 篇文章');
+    } catch (err) {
+      alert('AI 分析失败: ' + err.message);
+      renderArticles();
+    }
+  }
+
+  // ---------- 持久化辅助 ----------
+  async function persistState() {
+    await DB.feeds.putAll(state.feeds);
+    await DB.articles.putAll(state.articles);
+  }
+
+  // ---------- 事件绑定 ----------
+  addFeedBtn.addEventListener('click', () => {
+    const url = feedUrlInput.value.trim();
+    if (!url) return alert('请输入 RSS 链接');
+    addFeed(url);
+  });
+
+  feedUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addFeedBtn.click();
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    feedUrlInput.value = '';
+    feedUrlInput.focus();
+  });
+
+  refreshBtn.addEventListener('click', refreshActiveFeed);
+  aiSummaryBtn.addEventListener('click', runAISummary);
+
+  // ---------- 全选 / 取消 ----------
+  document.getElementById('selectAllBtn').addEventListener('click', () => {
+    const btn = document.getElementById('selectAllBtn');
+    if (btn.textContent === '全选') {
+      const filtered = state.activeFeedId
+        ? state.articles.filter(a => a.feedId === state.activeFeedId)
+        : state.articles;
+      filtered.forEach(a => state.selectedIds.add(a.id));
+      btn.textContent = '取消';
+    } else {
+      state.selectedIds.clear();
+      btn.textContent = '全选';
+    }
+    renderArticles();
+  });
+
+  // ---------- AI 设置交互 ----------
+  document.getElementById('settingsToggle').addEventListener('click', () => {
+    document.getElementById('settingsPanel').classList.toggle('open');
+  });
+
+  document.getElementById('saveApiBtn').addEventListener('click', () => {
+    const endpoint = document.getElementById('apiEndpoint').value.trim();
+    const key      = document.getElementById('apiKey').value.trim();
+    const model    = document.getElementById('apiModel').value.trim();
+    if (!endpoint || !key) {
+      document.getElementById('apiStatus').textContent = '地址和 Key 不能为空';
+      return;
+    }
+    saveAPIConfig(endpoint, key, model || 'deepseek-chat');
+    document.getElementById('apiStatus').textContent = '已保存';
+    setTimeout(() => document.getElementById('apiStatus').textContent = '', 2000);
+  });
+
+  // ---------- 启动：从 DB 恢复数据 ----------
+  (async function init() {
+    try {
+      await DB.open();
+
+      // 读取旧数据
+      let savedFeeds = await DB.feeds.getAll();
+      let savedArticles = await DB.articles.getAll();
+
+      // 修复：过滤掉没有文章的孤立源
+      if (savedFeeds.length > 0 && savedArticles.length === 0) {
+        console.warn('发现孤立源，清除');
+        await DB.feeds.clear();
+        savedFeeds = [];
+      }
+
+      if (savedFeeds.length > 0) {
+        state.feeds    = savedFeeds;
+        state.articles = savedArticles;
+        state.activeFeedId = state.feeds[0]?.id || null;
+      } else {
+        // 首次使用，加载演示数据
+        initDemoData();
+        await persistState();
+      }
+
+      renderFeedList();
+      renderArticles();
+      currentTitle.textContent = state.activeFeedId
+        ? state.feeds.find(f => f.id === state.activeFeedId)?.title || '所有文章'
+        : '所有文章';
+
+      // 加载 AI 配置到 UI
+      loadAPIConfigToUI();
+    } catch (err) {
+      console.error('DB 初始化失败:', err.message);
+      // 降级：加载演示数据
+      initDemoData();
+    }
+  })();
+
+  // 演示数据生成器
+  function initDemoData() {
+    const demoFeeds = [
+      { url: 'https://www.ruanyifeng.com/blog/atom.xml', title: '阮一峰的网络日志' },
+    ];
+    state.feeds = demoFeeds.map((f, i) => ({
+      id: uuid(),
+      url: f.url,
+      title: f.title,
+      articleCount: 3,
+    }));
+
+    // 模拟文章
+    const demoArticles = [
+      {
+        id: uuid(), feedId: state.feeds[0].id,
+        title: 'RSS 阅读器入门指南',
+        link: '#', pubDate: '2026-05-28', summary: 'RSS（Really Simple Syndication）是一种网络聚合格式，用于发布经常更新的内容，如博客文章、新闻头条等。本文将介绍如何开始使用 RSS...',
+        aiTags: ['教程', '前端'],
+      },
+      {
+        id: uuid(), feedId: state.feeds[0].id,
+        title: '前端趋势 2026：AI 驱动的开发工具',
+        link: '#', pubDate: '2026-05-25', summary: '2026 年，AI 驱动的开发工具正在重塑前端开发流程。从自动代码生成到智能测试，开发者需要适应新的工作范式。',
+        aiTags: ['前端', 'AI'],
+      },
+      {
+        id: uuid(), feedId: state.feeds[0].id,
+        title: 'IndexedDB vs localStorage：何时使用哪种存储？',
+        link: '#', pubDate: '2026-05-22', summary: '在浏览器端存储数据时，IndexedDB 和 localStorage 各有适用场景。本文从性能、容量和查询能力三个维度进行对比。',
+        aiTags: ['前端', '教程'],
+      },
+    ];
+
+    state.articles.push(...demoArticles);
+    state.activeFeedId = state.feeds[0].id;
+    renderFeedList();
+    renderArticles();
+  }
+</script>
+
+</body>
+</html>
